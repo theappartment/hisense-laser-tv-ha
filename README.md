@@ -18,6 +18,23 @@ Tested with a Hisense `HE100L5` Laser TV on firmware
 
 ## Install
 
+### HACS custom repository
+
+1. Open HACS in Home Assistant.
+2. Open the menu in the top right and choose **Custom repositories**.
+3. Add this repository URL:
+
+```text
+https://github.com/theappartment/hisense-laser-tv-ha
+```
+
+4. Choose category **Integration**.
+5. Install **Hisense Laser TV**.
+6. Restart Home Assistant.
+7. Go to **Settings > Devices & services > Add integration > Hisense Laser TV**.
+
+### Manual install
+
 Copy this folder into Home Assistant:
 
 ```text
@@ -86,6 +103,15 @@ openssl pkcs12 -legacy -in remoteclientmobile.p12 -nocerts -nodes \
 ```
 
 Only use certificate files you are legally allowed to use.
+
+For the most convenient Home Assistant setup, put the files in:
+
+```text
+/config/ssl/remoteclientmobile.crt
+/config/ssl/remoteclientmobile.key
+```
+
+Then leave the certificate fields at their default values during setup.
 
 ## Discovery
 

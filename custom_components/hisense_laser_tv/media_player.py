@@ -259,7 +259,7 @@ class HisenseLaserTvEntity(MediaPlayerEntity):
             "vidaa_token_configured": bool(self.entry.data.get(CONF_VIDAA_ACCESS_TOKEN)),
             "working_ssl_mode": self._working_ssl_mode,
             "last_error": self._last_error,
-            "client_version": "0.4.7-filtered-responses",
+            "client_version": "0.4.8-hacs-ready",
         }
 
     def _create_tv(
