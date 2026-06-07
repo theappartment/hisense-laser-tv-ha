@@ -1,3 +1,5 @@
+![Hisense Laser TV Home Assistant HACS cover](assets/cover.png)
+
 # Hisense Laser TV for Home Assistant
 
 Custom Home Assistant integration for local control of Hisense Laser TV / VIDAA
