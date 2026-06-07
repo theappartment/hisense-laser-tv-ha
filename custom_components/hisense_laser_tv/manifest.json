@@ -1,0 +1,35 @@
+{
+  "domain": "hisense_laser_tv",
+  "name": "Hisense Laser TV",
+  "codeowners": [],
+  "config_flow": true,
+  "dependencies": ["ssdp"],
+  "documentation": "https://github.com/theappartment/hisense-laser-tv-ha",
+  "iot_class": "local_polling",
+  "issue_tracker": "https://github.com/theappartment/hisense-laser-tv-ha/issues",
+  "requirements": ["wakeonlan==3.1.0"],
+  "ssdp": [
+    {
+      "manufacturer": "Hisense"
+    },
+    {
+      "manufacturer": "Hisense Electric Co., Ltd."
+    },
+    {
+      "manufacturer": "Hisense Electric Co.,Ltd."
+    },
+    {
+      "manufacturer": "Hisense International Co., Ltd."
+    },
+    {
+      "manufacturer": "Hisense Group"
+    },
+    {
+      "manufacturer": "VIDAA"
+    },
+    {
+      "manufacturer": "VIDAA USA, Inc."
+    }
+  ],
+  "version": "0.4.7"
+}

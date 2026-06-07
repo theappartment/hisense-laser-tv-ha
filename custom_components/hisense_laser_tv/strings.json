@@ -1,0 +1,80 @@
+{
+  "config": {
+    "menu_options": {
+      "manual": "Inserisci IP manualmente",
+      "scan": "Scansiona rete locale"
+    },
+    "step": {
+      "user": {
+        "title": "Configura Hisense Laser TV",
+        "description": "Scegli come trovare il proiettore.",
+        "menu_options": {
+          "manual": "Inserisci IP manualmente",
+          "scan": "Scansiona rete locale"
+        }
+      },
+      "manual": {
+        "title": "Hisense Laser TV",
+        "description": "Inserisci l'indirizzo IP del proiettore. Dopo il collegamento ti chiedero il codice mostrato sul Laser TV.",
+        "data": {
+          "host": "Indirizzo IP",
+          "name": "Nome",
+          "port": "Porta",
+          "timeout": "Timeout",
+          "mac_address": "MAC address",
+          "paired_uuid": "ID app VIDAA abbinata",
+          "certfile": "Certificato client",
+          "keyfile": "Chiave client",
+          "ssl_mode": "Modalita SSL"
+        }
+      },
+      "scan": {
+        "title": "Scansiona rete locale",
+        "description": "Cerca dispositivi Hisense/VIDAA raggiungibili sulla porta di controllo locale. Usa la rete del tuo Home Assistant, per esempio 192.168.1.0/24.",
+        "data": {
+          "scan_cidr": "Rete da scansionare",
+          "port": "Porta"
+        }
+      },
+      "scan_select": {
+        "title": "Scegli dispositivo",
+        "description": "Ho trovato piu dispositivi compatibili. Scegli quello da configurare.",
+        "data": {
+          "selected_host": "Dispositivo"
+        }
+      },
+      "discovery_confirm": {
+        "title": "Configura {name}",
+        "description": "Ho trovato un dispositivo Hisense/VIDAA all'indirizzo {host}. Dopo il collegamento ti chiedero il codice mostrato sul Laser TV.",
+        "data": {
+          "host": "Indirizzo IP",
+          "name": "Nome",
+          "port": "Porta",
+          "timeout": "Timeout",
+          "mac_address": "MAC address",
+          "paired_uuid": "ID app VIDAA abbinata",
+          "certfile": "Certificato client",
+          "keyfile": "Chiave client",
+          "ssl_mode": "Modalita SSL"
+        }
+      },
+      "pair": {
+        "title": "Abbina Hisense Laser TV",
+        "description": "Guarda lo schermo del proiettore e inserisci il codice di pairing mostrato. Se non compare nulla, annulla e riprova con il proiettore acceso sulla home VIDAA.",
+        "data": {
+          "pairing_code": "Codice sul proiettore"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Non riesco a collegarmi al proiettore. Verifica IP, porta, TV acceso e modalita SSL.",
+      "invalid_cidr": "La rete non e valida. Usa un formato tipo 192.168.1.0/24.",
+      "no_devices_found": "Non ho trovato dispositivi sulla rete indicata.",
+      "pairing_failed": "Il pairing non e riuscito. Verifica il codice sul proiettore e riprova prima che scada."
+    },
+    "abort": {
+      "already_configured": "Questo proiettore e gia configurato.",
+      "unknown_discovery": "Il dispositivo e stato scoperto, ma mancano dati di rete sufficienti per configurarlo."
+    }
+  }
+}

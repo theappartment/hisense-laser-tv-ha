@@ -1,0 +1,16 @@
+.DS_Store
+__pycache__/
+*.py[cod]
+*.zip
+
+# Local certificate material extracted from VIDAA/RemoteNOW APKs.
+# Do not commit private keys to the public repository.
+custom_components/hisense_laser_tv/certs/*.crt
+custom_components/hisense_laser_tv/certs/*.key
+custom_components/hisense_laser_tv/certs/*.pem
+custom_components/hisense_laser_tv/certs/*.p12
+custom_components/hisense_laser_tv/certs/*.bks
+
+# Local scratch files used during protocol research.
+custom_components/hi_keys/
+custom_components/hi_keys.zip
