@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import ipaddress
+import re
 import ssl
 from pathlib import Path
 from typing import Any
@@ -360,6 +361,24 @@ def _discovery_name(discovery_info: SsdpServiceInfo) -> str:
     return DEFAULT_NAME
 
 
+def _discovery_mac(discovery_info: SsdpServiceInfo) -> str:
+    """Return the best MAC address exposed in the UPnP model description."""
+    upnp = discovery_info.upnp or {}
+    haystack = "\n".join(str(value) for value in upnp.values() if value)
+    for key in ("macWifi", "macEthernet", "mac"):
+        match = re.search(rf"{key}=([0-9A-Fa-f:]+)", haystack)
+        if match:
+            return _format_mac_address(match.group(1))
+    return ""
+
+
+def _format_mac_address(mac_address: str) -> str:
+    hex_digits = re.sub(r"[^0-9A-Fa-f]", "", mac_address)
+    if len(hex_digits) != 12:
+        return mac_address
+    return ":".join(hex_digits[index : index + 2] for index in range(0, 12, 2))
+
+
 def _discovery_unique_id(discovery_info: SsdpServiceInfo, host: str) -> str:
     upnp = discovery_info.upnp or {}
     udn = getattr(discovery_info, "ssdp_udn", None)
@@ -503,7 +522,7 @@ class HisenseLaserTvConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             CONF_NAME: _discovery_name(discovery_info),
             CONF_PORT: DEFAULT_PORT,
             CONF_TIMEOUT: DEFAULT_TIMEOUT,
-            CONF_MAC_ADDRESS: "",
+            CONF_MAC_ADDRESS: _discovery_mac(discovery_info),
             CONF_PAIRED_UUID: "",
             CONF_SSL_MODE: DEFAULT_SSL_MODE,
         }

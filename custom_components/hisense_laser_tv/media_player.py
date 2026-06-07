@@ -4,7 +4,10 @@ from __future__ import annotations
 
 import logging
 import hashlib
+import re
+import socket
 import ssl
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -55,6 +58,9 @@ from .client import (
 )
 
 _LOGGER = logging.getLogger(__name__)
+VIDAA_WAKE_PORT = 33129
+VIDAA_WAKE_REPEAT = 5
+VIDAA_WAKE_DELAY = 0.1
 FEATURE_NAMES = (
     "TURN_ON",
     "TURN_OFF",
@@ -377,10 +383,8 @@ class HisenseLaserTvEntity(MediaPlayerEntity):
         """Turn on the projector."""
         mac_address = self.entry.data.get(CONF_MAC_ADDRESS)
         if mac_address:
-            from wakeonlan import send_magic_packet
-
             await self.hass.async_add_executor_job(
-                send_magic_packet,
+                _send_wake_packets,
                 mac_address,
             )
             return
@@ -510,3 +514,30 @@ def _best_current_source(
     if sources:
         return sources[0].display_name
     return None
+
+
+def _send_wake_packets(mac_address: str) -> None:
+    """Send standard WOL plus the VIDAA Android app wake packet."""
+    from wakeonlan import send_magic_packet
+
+    send_magic_packet(mac_address)
+    _send_vidaa_wake_packets(mac_address)
+
+
+def _send_vidaa_wake_packets(mac_address: str) -> None:
+    """Send the wake packet used by the legacy VIDAA Android app."""
+    mac_bytes = _mac_address_bytes(mac_address)
+    payload = (b"\xff" * 6) + (mac_bytes * 16) + (b"\x00" * 6)
+
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+        for _ in range(VIDAA_WAKE_REPEAT):
+            sock.sendto(payload, ("255.255.255.255", VIDAA_WAKE_PORT))
+            time.sleep(VIDAA_WAKE_DELAY)
+
+
+def _mac_address_bytes(mac_address: str) -> bytes:
+    hex_digits = re.sub(r"[^0-9A-Fa-f]", "", mac_address)
+    if len(hex_digits) != 12:
+        raise ValueError("MAC address must contain 12 hex digits")
+    return bytes.fromhex(hex_digits)

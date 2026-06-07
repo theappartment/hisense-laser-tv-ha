@@ -15,7 +15,7 @@ Tested with a Hisense `HE100L5` Laser TV on firmware
 - SSDP discovery plus manual network scan
 - VIDAA legacy-app pairing flow with PIN entry
 - Power, volume, mute, source selection, play, pause, stop
-- Wake-on-LAN support when a MAC address is configured
+- Wake-on-LAN and VIDAA Android-app wake packet support when a MAC address is configured
 - Extra remote keys through `media_player.send_command` when available
 
 ## Install
@@ -54,6 +54,17 @@ Restart Home Assistant, then go to:
 ```text
 Settings > Devices & services > Add integration > Hisense Laser TV
 ```
+
+## Wake from standby
+
+When a MAC address is configured, `turn_on` sends both:
+
+- a standard Wake-on-LAN magic packet
+- the legacy VIDAA Android app wake packet on UDP broadcast port `33129`
+
+The VIDAA packet is sent five times, 100 ms apart, matching the behavior found
+in the Android app. Wi-Fi wake support still depends on projector firmware,
+network standby settings, and router/access point broadcast handling.
 
 ## Pairing
 
