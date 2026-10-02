@@ -306,9 +306,6 @@ class HisenseLaserTvClient:
         tv_ui_base = posixpath.join(
             "/", "remoteapp", "tv", "ui_service", self.device_topic
         )
-        tv_platform_base = posixpath.join(
-            "/", "remoteapp", "tv", "platform_service", self.device_topic
-        )
         self._subscribe_topic(
             posixpath.join(mobile_base, "ui_service", "data", "authenticationcode")
         )
@@ -332,18 +329,21 @@ class HisenseLaserTvClient:
             posixpath.join(tv_ui_base, "actions", "authenticationcodeclose"),
             None,
         )
-        return auth_result
+        try:
+            return self._wait_for_payload(
+                lambda payload: isinstance(payload, dict)
+                and any(key in payload for key in ("accesstoken", "refreshtoken")),
+                "VIDAA token issuance",
+            )
+        except HisenseLaserTvTimeoutError:
+            _LOGGER.debug("VIDAA pairing completed without token issuance payload")
+            return auth_result
 
     def get_volume(self) -> dict[str, Any]:
         """Get volume state."""
         self._call_service(service="platform_service", action="getvolume")
         return self._wait_for_payload(
-            lambda payload: isinstance(payload, dict)
-            and (
-                "volume_value" in payload
-                or "volume_type" in payload
-                or "volume" in payload
-            ),
+            _is_volume_payload,
             "volume state",
         )
 
@@ -401,6 +401,50 @@ def _message_payload(message: Any) -> Any:
     if isinstance(message, dict) and "payload" in message:
         return message["payload"]
     return message
+
+
+def _is_volume_payload(payload: Any) -> bool:
+    """Return whether a VIDAA payload appears to contain volume state."""
+    if isinstance(payload, str):
+        try:
+            payload = json.loads(payload)
+        except json.JSONDecodeError:
+            return False
+    if not isinstance(payload, dict):
+        return False
+    return _contains_any_key(
+        payload,
+        {
+            "current_volume",
+            "currentvolume",
+            "mute",
+            "muted",
+            "volume",
+            "volume_level",
+            "volume_type",
+            "volume_value",
+            "volumelevel",
+            "volumetype",
+            "volumevalue",
+            "vol",
+        },
+    )
+
+
+def _contains_any_key(value: Any, keys: set[str]) -> bool:
+    if isinstance(value, dict):
+        for key, item in value.items():
+            if _normalise_payload_key(key) in keys:
+                return True
+            if _contains_any_key(item, keys):
+                return True
+    elif isinstance(value, list):
+        return any(_contains_any_key(item, keys) for item in value)
+    return False
+
+
+def _normalise_payload_key(key: Any) -> str:
+    return re.sub(r"[^a-z0-9]", "", str(key).lower())
 
 
 def build_vidaa_auth_identity(mac_address: str | None = None) -> VidaaAuthIdentity:

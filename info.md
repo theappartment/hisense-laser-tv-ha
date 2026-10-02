@@ -9,6 +9,7 @@ Local Home Assistant integration for Hisense Laser TV / VIDAA projectors.
 - SSDP discovery and local network scan
 - Power, volume, mute, source selection, play, pause, stop
 - Wake-on-LAN when a MAC address is configured
+- Bundled dashboard card with power, volume slider, mute, and quick inputs
 
 ## Before installing
 

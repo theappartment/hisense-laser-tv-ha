@@ -69,6 +69,12 @@ CONF_PAIRING_CODE = "pairing_code"
 
 
 def _client_ssl_context(data: dict[str, Any]) -> ssl.SSLContext | None:
+    if data.get(CONF_SSL_MODE, DEFAULT_SSL_MODE) == SSL_MODE_PLAIN:
+        return None
+
+    if data.get(CONF_SSL_MODE, DEFAULT_SSL_MODE) == SSL_MODE_INSECURE:
+        return ssl._create_unverified_context()
+
     certfile = data.get(CONF_CERTFILE) or DEFAULT_CERTFILE
     keyfile = data.get(CONF_KEYFILE) or DEFAULT_KEYFILE
     cert_path = _existing_cert_path(certfile)
@@ -106,6 +112,12 @@ def _existing_cert_path(path: str) -> str | None:
 
 
 def _ssl_contexts_to_try(data: dict[str, Any]) -> tuple[ssl.SSLContext | None, ...]:
+    ssl_mode = data.get(CONF_SSL_MODE, DEFAULT_SSL_MODE)
+    if ssl_mode == SSL_MODE_PLAIN:
+        return (None,)
+    if ssl_mode == SSL_MODE_INSECURE:
+        return (ssl._create_unverified_context(),)
+
     context = _client_ssl_context(data)
     if context is not None:
         return (context, None)
@@ -364,9 +376,26 @@ def _discovery_name(discovery_info: SsdpServiceInfo) -> str:
 def _discovery_mac(discovery_info: SsdpServiceInfo) -> str:
     """Return the best MAC address exposed in the UPnP model description."""
     upnp = discovery_info.upnp or {}
-    haystack = "\n".join(str(value) for value in upnp.values() if value)
+    haystack = "\n".join(
+        f"{field}={value}" for field, value in upnp.items() if value
+    )
     for key in ("macWifi", "macEthernet", "mac"):
-        match = re.search(rf"{key}=([0-9A-Fa-f:]+)", haystack)
+        direct_value = next(
+            (
+                value
+                for field, value in upnp.items()
+                if re.sub(r"[^a-z]", "", str(field).lower()).endswith(key.lower())
+            ),
+            None,
+        )
+        if direct_value and _is_valid_mac_address(str(direct_value)):
+            return _format_mac_address(str(direct_value))
+
+        match = re.search(
+            rf"{key}\s*[:=]\s*([0-9A-Fa-f:-]{{12,17}})",
+            haystack,
+            re.IGNORECASE,
+        )
         if match:
             return _format_mac_address(match.group(1))
     return ""
@@ -377,6 +406,16 @@ def _format_mac_address(mac_address: str) -> str:
     if len(hex_digits) != 12:
         return mac_address
     return ":".join(hex_digits[index : index + 2] for index in range(0, 12, 2))
+
+
+def _is_valid_mac_address(mac_address: str) -> bool:
+    """Return whether a value contains a complete MAC address."""
+    return bool(
+        re.fullmatch(
+            r"(?:[0-9A-Fa-f]{12}|(?:[0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2})",
+            mac_address.strip(),
+        )
+    )
 
 
 def _discovery_unique_id(discovery_info: SsdpServiceInfo, host: str) -> str:
@@ -395,6 +434,13 @@ class HisenseLaserTvConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a config flow for Hisense Laser TV."""
 
     VERSION = 1
+
+    @staticmethod
+    def async_get_options_flow(
+        config_entry: config_entries.ConfigEntry,
+    ) -> config_entries.OptionsFlow:
+        """Return the options flow used to configure Wi-Fi wake."""
+        return HisenseLaserTvOptionsFlow(config_entry)
 
     def __init__(self) -> None:
         """Initialize the config flow."""
@@ -586,5 +632,50 @@ class HisenseLaserTvConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         return self.async_show_form(
             step_id="pair",
             data_schema=vol.Schema({vol.Required(CONF_PAIRING_CODE): str}),
+            errors=errors,
+        )
+
+
+class HisenseLaserTvOptionsFlow(config_entries.OptionsFlow):
+    """Manage settings that can be changed after pairing."""
+
+    def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
+        """Initialize the options flow."""
+        self._config_entry = config_entry
+
+    async def async_step_init(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Configure the Wi-Fi MAC address used to wake the TV."""
+        errors: dict[str, str] = {}
+        current_mac = self._config_entry.options.get(
+            CONF_MAC_ADDRESS,
+            self._config_entry.data.get(CONF_MAC_ADDRESS, ""),
+        )
+
+        if user_input is not None:
+            mac_address = user_input.get(CONF_MAC_ADDRESS, "").strip()
+            if mac_address and not _is_valid_mac_address(mac_address):
+                errors[CONF_MAC_ADDRESS] = "invalid_mac_address"
+            else:
+                return self.async_create_entry(
+                    title="",
+                    data={
+                        CONF_MAC_ADDRESS: (
+                            _format_mac_address(mac_address) if mac_address else ""
+                        )
+                    },
+                )
+
+        return self.async_show_form(
+            step_id="init",
+            data_schema=vol.Schema(
+                {
+                    vol.Optional(
+                        CONF_MAC_ADDRESS,
+                        default=current_mac,
+                    ): str,
+                }
+            ),
             errors=errors,
         )

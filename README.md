@@ -16,6 +16,7 @@ Tested with a Hisense `HE100L5` Laser TV on firmware
 - VIDAA legacy-app pairing flow with PIN entry
 - Power, volume, mute, source selection, play, pause, stop
 - Wake-on-LAN and VIDAA Android-app wake packet support when a MAC address is configured
+- Dedicated `Accendi tramite Wi-Fi` button entity for dashboards
 - Extra remote keys through `media_player.send_command` when available
 
 ## Install
@@ -65,6 +66,40 @@ When a MAC address is configured, `turn_on` sends both:
 The VIDAA packet is sent five times, 100 ms apart, matching the behavior found
 in the Android app. Wi-Fi wake support still depends on projector firmware,
 network standby settings, and router/access point broadcast handling.
+
+The Wi-Fi MAC can also be added or corrected after setup from:
+
+```text
+Settings > Devices & services > Hisense Laser TV > Configure
+```
+
+Use the MAC address of the active Wi-Fi interface, not the Ethernet MAC. The TV
+must also have network wake, wake on wireless network, or fast start enabled.
+
+## Dashboard card
+
+Version `0.5.0` includes the **Hisense Laser TV** dashboard card. The integration
+registers it automatically after Home Assistant restarts; no Lovelace resource
+needs to be added manually.
+
+In dashboard edit mode, choose **Add card**, search for **Hisense Laser TV**, and
+select the TV entity. The Wi-Fi wake button is found automatically, or it can be
+selected explicitly in the visual card editor.
+
+The card provides:
+
+- power on through the configured Wi-Fi MAC and power off
+- current volume, mute, and a direct volume slider
+- horizontal quick selection for every input reported by the TV
+- clear offline and missing Wi-Fi MAC states
+
+Equivalent YAML configuration:
+
+```yaml
+type: custom:hisense-laser-tv-card
+entity: media_player.hisense_laser_tv
+wake_button: button.hisense_laser_tv_accendi_tramite_wi_fi
+```
 
 ## Pairing
 

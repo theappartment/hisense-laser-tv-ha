@@ -76,5 +76,19 @@
       "already_configured": "Questo proiettore e gia configurato.",
       "unknown_discovery": "Il dispositivo e stato scoperto, ma mancano dati di rete sufficienti per configurarlo."
     }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Accensione tramite Wi-Fi",
+        "description": "Inserisci il MAC Wi-Fi della TV. Lo trovi nelle impostazioni di rete della TV. Per funzionare, nelle impostazioni Hisense deve essere attiva l'accensione dalla rete o l'avvio rapido.",
+        "data": {
+          "mac_address": "MAC Wi-Fi della TV"
+        }
+      }
+    },
+    "error": {
+      "invalid_mac_address": "Il MAC Wi-Fi non e valido. Usa un formato tipo AA:BB:CC:DD:EE:FF."
+    }
   }
 }

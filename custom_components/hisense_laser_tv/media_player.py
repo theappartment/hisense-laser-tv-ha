@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import hashlib
 import re
-import socket
 import ssl
-import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -29,11 +28,9 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_HOST, CONF_NAME, CONF_PORT, CONF_TIMEOUT
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.typing import StateType
 
 from .const import (
     CONF_CERTFILE,
-    CONF_MAC_ADDRESS,
     CONF_KEYFILE,
     CONF_SSL_MODE,
     CONF_VIDAA_ACCESS_TOKEN,
@@ -49,6 +46,7 @@ from .const import (
     DOMAIN,
     REMOTE_KEYS,
     SSL_MODE_AUTO,
+    SSL_MODE_INSECURE,
     SSL_MODE_PLAIN,
 )
 from .client import (
@@ -56,11 +54,13 @@ from .client import (
     HisenseLaserTvClient,
     MqttConnectOptions,
 )
+from .wake import (
+    can_wake_from_standby,
+    configured_mac_address,
+    send_wake_packets_for_entry,
+)
 
 _LOGGER = logging.getLogger(__name__)
-VIDAA_WAKE_PORT = 33129
-VIDAA_WAKE_REPEAT = 5
-VIDAA_WAKE_DELAY = 0.1
 FEATURE_NAMES = (
     "TURN_ON",
     "TURN_OFF",
@@ -132,7 +132,13 @@ def _existing_cert_path(path: str) -> str | None:
 def _ssl_contexts_to_try(
     certfile: str,
     keyfile: str,
+    ssl_mode: str,
 ) -> tuple[tuple[str, ssl.SSLContext | None], ...]:
+    if ssl_mode == SSL_MODE_PLAIN:
+        return ((SSL_MODE_PLAIN, None),)
+    if ssl_mode == SSL_MODE_INSECURE:
+        return ((SSL_MODE_INSECURE, ssl._create_unverified_context()),)
+
     context = _client_ssl_context(certfile, keyfile)
     if context is not None:
         return (("tls_client_cert", context), (SSL_MODE_PLAIN, None))
@@ -248,11 +254,18 @@ class HisenseLaserTvEntity(MediaPlayerEntity):
         return [source.display_name for source in self._sources]
 
     @property
-    def extra_state_attributes(self) -> dict[str, StateType]:
+    def extra_state_attributes(self) -> dict[str, Any]:
         """Return extra state attributes."""
         return {
             "host": self.entry.data[CONF_HOST],
-            "mac_address": self.entry.data.get(CONF_MAC_ADDRESS) or None,
+            "mac_address": configured_mac_address(self.entry) or None,
+            "wifi_wake_configured": can_wake_from_standby(self.entry),
+            "volume_level_percent": (
+                round(self._volume_level * 100)
+                if self._volume_level is not None
+                else None
+            ),
+            "is_volume_muted": self._is_volume_muted,
             "ssl_mode": self.entry.data.get(CONF_SSL_MODE, DEFAULT_SSL_MODE),
             "certfile": self.entry.data.get(CONF_CERTFILE, DEFAULT_CERTFILE),
             "keyfile": self.entry.data.get(CONF_KEYFILE, DEFAULT_KEYFILE),
@@ -265,7 +278,7 @@ class HisenseLaserTvEntity(MediaPlayerEntity):
             "vidaa_token_configured": bool(self.entry.data.get(CONF_VIDAA_ACCESS_TOKEN)),
             "working_ssl_mode": self._working_ssl_mode,
             "last_error": self._last_error,
-            "client_version": "0.4.8-hacs-ready",
+            "client_version": "0.5.0",
         }
 
     def _create_tv(
@@ -298,13 +311,16 @@ class HisenseLaserTvEntity(MediaPlayerEntity):
     ) -> tuple[tuple[str, ssl.SSLContext | None, MqttConnectOptions], ...]:
         certfile = self.entry.data.get(CONF_CERTFILE, DEFAULT_CERTFILE)
         keyfile = self.entry.data.get(CONF_KEYFILE, DEFAULT_KEYFILE)
+        configured_ssl_mode = self.entry.data.get(CONF_SSL_MODE, DEFAULT_SSL_MODE)
         token_option = _token_mqtt_option(self.entry.data)
         mqtt_options_to_try = (
             (token_option,) if token_option is not None else _mqtt_options_to_try()
         )
         options = [
-            (f"{ssl_mode}:{mqtt_options.name}", ssl_context, mqtt_options)
-            for ssl_mode, ssl_context in _ssl_contexts_to_try(certfile, keyfile)
+            (f"{mode}:{mqtt_options.name}", ssl_context, mqtt_options)
+            for mode, ssl_context in _ssl_contexts_to_try(
+                certfile, keyfile, configured_ssl_mode
+            )
             for mqtt_options in mqtt_options_to_try
         ]
         if self._working_ssl_mode is not None:
@@ -333,8 +349,10 @@ class HisenseLaserTvEntity(MediaPlayerEntity):
         except Exception as err:
             self._last_error = f"{type(err).__name__}: {err}"
             _LOGGER.warning("Hisense Laser TV update failed: %s", self._last_error)
-            self._available = False
+            self._available = can_wake_from_standby(self.entry)
             self._state = MediaPlayerState.OFF
+            self._volume_level = None
+            self._is_volume_muted = None
 
     def _sync_update(self) -> None:
         last_error: Exception | None = None
@@ -381,14 +399,18 @@ class HisenseLaserTvEntity(MediaPlayerEntity):
 
     async def async_turn_on(self) -> None:
         """Turn on the projector."""
-        mac_address = self.entry.data.get(CONF_MAC_ADDRESS)
+        mac_address = configured_mac_address(self.entry)
         if mac_address:
             await self.hass.async_add_executor_job(
-                _send_wake_packets,
-                mac_address,
+                send_wake_packets_for_entry,
+                self.entry,
             )
+            self._available = True
+            self._state = MediaPlayerState.ON
             return
         await self._send_remote_key("power")
+        self._available = True
+        self._state = MediaPlayerState.ON
 
     async def async_turn_off(self) -> None:
         """Turn off the projector."""
@@ -457,20 +479,72 @@ class HisenseLaserTvEntity(MediaPlayerEntity):
 
 
 def _parse_volume(volume: dict[str, Any]) -> float | None:
-    raw_volume = volume.get("volume_value", volume.get("volume"))
+    raw_volume = _find_payload_value(
+        volume,
+        (
+            "volume_value",
+            "volumevalue",
+            "volume",
+            "vol",
+            "volume_level",
+            "volumelevel",
+            "current_volume",
+            "currentvolume",
+        ),
+    )
     if raw_volume is None:
         return None
+    if isinstance(raw_volume, dict):
+        raw_volume = _find_payload_value(raw_volume, ("value", "level", "current"))
+    if isinstance(raw_volume, str) and raw_volume.strip().endswith("%"):
+        raw_volume = raw_volume.strip()[:-1]
     try:
-        return max(0, min(100, int(raw_volume))) / 100
+        parsed = float(raw_volume)
     except (TypeError, ValueError):
         return None
+    if 0 <= parsed <= 1:
+        return parsed
+    return max(0, min(100, parsed)) / 100
 
 
 def _parse_muted(volume: dict[str, Any]) -> bool | None:
-    raw_type = volume.get("volume_type", volume.get("mute"))
+    raw_type = _find_payload_value(
+        volume,
+        ("volume_type", "volumetype", "mute", "muted", "is_mute", "ismute"),
+    )
     if raw_type is None:
         return None
-    return str(raw_type) == "1"
+    if isinstance(raw_type, bool):
+        return raw_type
+    return str(raw_type).strip().lower() in {"1", "true", "yes", "on", "muted"}
+
+
+def _find_payload_value(payload: Any, keys: tuple[str, ...]) -> Any:
+    """Find the first matching value in a nested VIDAA payload."""
+    normalised_keys = {_normalise_payload_key(key) for key in keys}
+    if isinstance(payload, str):
+        try:
+            payload = json.loads(payload)
+        except json.JSONDecodeError:
+            return None
+    if isinstance(payload, dict):
+        for key, value in payload.items():
+            if _normalise_payload_key(key) in normalised_keys:
+                return value
+        for value in payload.values():
+            found = _find_payload_value(value, keys)
+            if found is not None:
+                return found
+    elif isinstance(payload, list):
+        for value in payload:
+            found = _find_payload_value(value, keys)
+            if found is not None:
+                return found
+    return None
+
+
+def _normalise_payload_key(key: Any) -> str:
+    return re.sub(r"[^a-z0-9]", "", str(key).lower())
 
 
 def _parse_sources(sources: list[dict[str, Any]]) -> list[SourceInfo]:
@@ -514,30 +588,3 @@ def _best_current_source(
     if sources:
         return sources[0].display_name
     return None
-
-
-def _send_wake_packets(mac_address: str) -> None:
-    """Send standard WOL plus the VIDAA Android app wake packet."""
-    from wakeonlan import send_magic_packet
-
-    send_magic_packet(mac_address)
-    _send_vidaa_wake_packets(mac_address)
-
-
-def _send_vidaa_wake_packets(mac_address: str) -> None:
-    """Send the wake packet used by the legacy VIDAA Android app."""
-    mac_bytes = _mac_address_bytes(mac_address)
-    payload = (b"\xff" * 6) + (mac_bytes * 16) + (b"\x00" * 6)
-
-    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
-        sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
-        for _ in range(VIDAA_WAKE_REPEAT):
-            sock.sendto(payload, ("255.255.255.255", VIDAA_WAKE_PORT))
-            time.sleep(VIDAA_WAKE_DELAY)
-
-
-def _mac_address_bytes(mac_address: str) -> bytes:
-    hex_digits = re.sub(r"[^0-9A-Fa-f]", "", mac_address)
-    if len(hex_digits) != 12:
-        raise ValueError("MAC address must contain 12 hex digits")
-    return bytes.fromhex(hex_digits)
