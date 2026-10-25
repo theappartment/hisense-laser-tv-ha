@@ -136,12 +136,29 @@ def _create_entry(flow: config_entries.ConfigFlow, data: dict[str, Any]) -> Flow
     return flow.async_create_entry(title=title, data=data)
 
 
-async def _begin_pairing_flow(
+async def _begin_connection_flow(
     flow: "HisenseLaserTvConfigFlow",
     data: dict[str, Any],
     errors: dict[str, str],
 ) -> FlowResult | None:
-    """Start pairing and move to the code entry step."""
+    """Create the entry directly, or fall back to pairing when required.
+
+    Older Hisense/VIDAA firmware (e.g. the P4/P6/P7 series) accepts the
+    hardcoded service credentials and never displays a pairing PIN, so we
+    try a basic connection first and only pair when the TV rejects
+    authorization.
+    """
+    try:
+        connected = await _can_connect(flow.hass, data)
+    except HisenseLaserTvAuthorizationError:
+        connected = False
+    except Exception:
+        errors["base"] = "cannot_connect"
+        return None
+
+    if connected:
+        return _create_entry(flow, data)
+
     try:
         tv, identity = await _start_pairing(flow.hass, data)
     except Exception:
@@ -467,7 +484,7 @@ class HisenseLaserTvConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             await self.async_set_unique_id(user_input[CONF_HOST])
             self._abort_if_unique_id_configured()
-            result = await _begin_pairing_flow(self, user_input, errors)
+            result = await _begin_connection_flow(self, user_input, errors)
             if result is not None:
                 return result
 
@@ -589,7 +606,7 @@ class HisenseLaserTvConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         errors: dict[str, str] = {}
         if user_input is not None:
             data = {**self._discovered_data, **user_input}
-            result = await _begin_pairing_flow(self, data, errors)
+            result = await _begin_connection_flow(self, data, errors)
             if result is not None:
                 return result
 

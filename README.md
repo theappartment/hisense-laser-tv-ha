@@ -5,8 +5,17 @@
 Custom Home Assistant integration for local control of Hisense Laser TV / VIDAA
 projectors over the device MQTT control port.
 
-Tested with a Hisense `HE100L5` Laser TV on firmware
-`V0000.01.00L.P0301`, transport protocol `1140`.
+Tested with:
+
+- Hisense `HE100L5` Laser TV on firmware `V0000.01.00L.P0301`, transport
+  protocol `1140` — newer VIDAA, uses PIN pairing.
+- Hisense `49P4` (P-series LCD) — older VIDAA, uses the hardcoded service
+  credentials over plain MQTT, no pairing or TLS certificate required.
+
+The integration auto-detects which path your TV supports: it first attempts a
+plain connection with the built-in service credentials and only falls back to
+PIN pairing if the TV rejects authorization. Legacy TLS client certificates
+are only needed for firmware that refuses plain MQTT.
 
 ## Features
 
@@ -76,6 +85,22 @@ Settings > Devices & services > Hisense Laser TV > Configure
 Use the MAC address of the active Wi-Fi interface, not the Ethernet MAC. The TV
 must also have network wake, wake on wireless network, or fast start enabled.
 
+### After a mains power cycle
+
+On older VIDAA sets (confirmed on the 49P4), the "Fast Start" / "Wake on
+Wireless Network" settings only apply to standby that was entered **from
+an on state**. After the TV has been fully switched off at the wall, it
+boots into a deep standby where the Wi-Fi radio is not powered. In that
+state WOL packets are not received and Home Assistant cannot wake the TV
+over the network — regardless of what the integration sends.
+
+The TV must be powered on at least once with the physical remote after a
+mains cycle. From that point on, soft standby works normally and
+Home Assistant can wake it. Until that first manual power-on happens, the
+entity will stay unavailable and the log will show a single
+`OSError: [Errno 113] Host is unreachable` warning (repeated poll failures
+are suppressed and only logged at debug level).
+
 ## Dashboard card
 
 Version `0.5.0` includes the **Hisense Laser TV** dashboard card. The integration
@@ -103,22 +128,30 @@ wake_button: button.hisense_laser_tv_accendi_tramite_wi_fi
 
 ## Pairing
 
-Some VIDAA firmware accepts local control only from a paired mobile-app
-identity. During setup, keep the projector powered on and on the VIDAA home
-screen.
+Pairing is only used when the TV firmware refuses the built-in service
+credentials. The integration always tries a plain connection first; older
+VIDAA sets (e.g. the P-series) complete setup without any PIN prompt. Newer
+VIDAA firmware will reject the plain connection, at which point the
+integration starts the PIN pairing flow automatically.
+
+During setup, keep the projector powered on and on the VIDAA home screen.
 
 1. Add the integration in Home Assistant.
 2. Enter the projector IP address or use discovery/scan.
-3. If the projector shows a PIN, enter it in the Home Assistant pairing field.
-4. Home Assistant stores the paired VIDAA app identity in the config entry.
+3. If the projector shows a PIN, enter it in the Home Assistant pairing
+   field. If no PIN appears and setup completes, your TV didn't need pairing.
+4. Home Assistant stores any paired VIDAA app identity in the config entry.
 
 If the entity is created but remains unavailable, open Home Assistant logs and
 look for `custom_components.hisense_laser_tv`.
 
 ## Certificates
 
-VIDAA/RemoteNOW models may require the legacy mobile-app TLS client
-certificate. This repository does not ship private-key material.
+Most tested models work with plain MQTT and do **not** need the legacy TLS
+client certificate. Only some VIDAA/RemoteNOW firmware refuses plain
+connections and requires the legacy mobile-app TLS client certificate. If
+your TV falls into that group, provide the files below; otherwise skip this
+section. This repository does not ship private-key material.
 
 The integration looks for these files:
 

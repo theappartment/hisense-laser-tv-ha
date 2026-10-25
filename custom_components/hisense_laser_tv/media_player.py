@@ -216,6 +216,7 @@ class HisenseLaserTvEntity(MediaPlayerEntity):
         self._tv: Any | None = None
         self._working_ssl_mode: str | None = None
         self._last_error: str | None = None
+        self._last_logged_error: str | None = None
         self._available = False
         self._state = MediaPlayerState.OFF
         self._volume_level: float | None = None
@@ -297,7 +298,7 @@ class HisenseLaserTvEntity(MediaPlayerEntity):
         return HisenseLaserTvClient(
             self.entry.data[CONF_HOST],
             port=self.entry.data.get(CONF_PORT, DEFAULT_PORT),
-            timeout=min(2, self.entry.data.get(CONF_TIMEOUT, DEFAULT_TIMEOUT)),
+            timeout=self.entry.data.get(CONF_TIMEOUT, DEFAULT_TIMEOUT),
             ssl_context=ssl_context,
             client_id=paired_uuid or options.client_id,
             device_topic=device_topic,
@@ -347,12 +348,21 @@ class HisenseLaserTvEntity(MediaPlayerEntity):
         try:
             await self.hass.async_add_executor_job(self._sync_update)
         except Exception as err:
-            self._last_error = f"{type(err).__name__}: {err}"
-            _LOGGER.warning("Hisense Laser TV update failed: %s", self._last_error)
+            error = f"{type(err).__name__}: {err}"
+            self._last_error = error
+            if error != self._last_logged_error:
+                _LOGGER.warning("Hisense Laser TV update failed: %s", error)
+                self._last_logged_error = error
+            else:
+                _LOGGER.debug("Hisense Laser TV update still failing: %s", error)
             self._available = can_wake_from_standby(self.entry)
             self._state = MediaPlayerState.OFF
             self._volume_level = None
             self._is_volume_muted = None
+            return
+        if self._last_logged_error is not None:
+            _LOGGER.info("Hisense Laser TV update recovered")
+            self._last_logged_error = None
 
     def _sync_update(self) -> None:
         last_error: Exception | None = None
@@ -377,14 +387,6 @@ class HisenseLaserTvEntity(MediaPlayerEntity):
                         "valid VIDAA mobile app credentials or a paired app ID."
                     ) from err
         else:
-            certfile = self.entry.data.get(CONF_CERTFILE, DEFAULT_CERTFILE)
-            keyfile = self.entry.data.get(CONF_KEYFILE, DEFAULT_KEYFILE)
-            if _existing_cert_path(certfile) is None or _existing_cert_path(keyfile) is None:
-                raise RuntimeError(
-                    "Could not connect with plain MQTT and TLS client certificate "
-                    f"files were not found at {certfile!r}/{('/config' + certfile) if certfile.startswith('/ssl/') else certfile!r} "
-                    f"and {keyfile!r}/{('/config' + keyfile) if keyfile.startswith('/ssl/') else keyfile!r}"
-                ) from last_error
             if last_error is not None:
                 raise last_error
             raise RuntimeError("Could not connect to Hisense Laser TV")
